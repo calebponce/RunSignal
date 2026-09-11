@@ -1,7 +1,7 @@
 # RunSignal
 
 [![Reliability CI](https://github.com/calebponce/RunSignal/actions/workflows/reliability-ci.yml/badge.svg)](https://github.com/calebponce/RunSignal/actions/workflows/reliability-ci.yml)
-[![Live demo](https://img.shields.io/badge/live-demo-4fd1ff)](https://runsignal-caleb.aurora-ibis-7274.chatgpt.site)
+[![Live demo](https://img.shields.io/badge/live-demo-4fd1ff)](https://runsignal-caleb.mheaeduardo.chatgpt.site)
 
 An evidence-first CI reliability console that turns workflow history into explainable release decisions.
 
@@ -9,7 +9,7 @@ RunSignal answers the question behind every red build: **is this a code regressi
 
 > Portfolio status: solo full-stack project by Caleb Ponce. The public experience uses representative CI data and never requests repository access. It demonstrates a production-oriented architecture without claiming live operational coverage.
 
-> **[Open the interactive demo](https://runsignal-caleb.aurora-ibis-7274.chatgpt.site)** — select a run, inspect its evidence, and execute the server-backed analysis without an account or repository token.
+> **[Open the interactive demo](https://runsignal-caleb.mheaeduardo.chatgpt.site)** — select a run, inspect its evidence, and execute the server-backed analysis without an account or repository token.
 
 ## Why this project exists
 
