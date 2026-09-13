@@ -14,12 +14,19 @@ const requestSchema = z.object({
   dependencyHealth: z.enum(["healthy", "degraded", "outage"]),
   touchedApplicationCode: z.boolean(),
   protectedBranch: z.boolean(),
+  releasePolicy: z
+    .object({
+      protectedBranchRegression: z.enum(["BLOCK", "HOLD"]).optional(),
+      blockConfidenceFloor: z.number().min(0).max(100).optional(),
+      requireReproducedFailureForBlock: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export async function GET() {
   return Response.json({
     service: "RunSignal deterministic triage API",
-    engineVersion: "1.0.0",
+    engineVersion: "1.1.0",
     endpoint: "POST /api/analyze",
   });
 }
@@ -41,8 +48,10 @@ export async function POST(request: Request) {
     );
   }
 
+  const { releasePolicy, ...signals } = parsed.data;
+
   return Response.json({
-    engineVersion: "1.0.0",
-    analysis: analyzeRun(parsed.data),
+    engineVersion: "1.1.0",
+    analysis: analyzeRun(signals, releasePolicy),
   });
 }

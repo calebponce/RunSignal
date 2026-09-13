@@ -27,6 +27,16 @@ export type Evidence = {
   weight: number;
 };
 
+export type ReleasePolicy = {
+  protectedBranchRegression: "BLOCK" | "HOLD";
+  blockConfidenceFloor: number;
+  requireReproducedFailureForBlock: boolean;
+};
+
+export type PolicyEvaluation = ReleasePolicy & {
+  decisionReason: string;
+};
+
 export type TriageResult = {
   runId: number;
   verdict: TriageVerdict;
@@ -38,6 +48,13 @@ export type TriageResult = {
   explanation: string;
   evidence: Evidence[];
   scorecard: Record<Exclude<TriageVerdict, "healthy" | "inconclusive">, number>;
+  policyEvaluation: PolicyEvaluation;
+};
+
+export const DEFAULT_RELEASE_POLICY: ReleasePolicy = {
+  protectedBranchRegression: "BLOCK",
+  blockConfidenceFloor: 0,
+  requireReproducedFailureForBlock: false,
 };
 
 const labels: Record<TriageVerdict, string> = {
@@ -61,7 +78,112 @@ const actions: Record<TriageVerdict, string> = {
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
-export function analyzeRun(input: TriageInput): TriageResult {
+function normalizeReleasePolicy(policy: Partial<ReleasePolicy> | undefined): ReleasePolicy {
+  return {
+    protectedBranchRegression:
+      policy?.protectedBranchRegression === "HOLD" ? "HOLD" : "BLOCK",
+    blockConfidenceFloor: clamp(
+      Number.isFinite(policy?.blockConfidenceFloor)
+        ? Math.round(policy.blockConfidenceFloor)
+        : DEFAULT_RELEASE_POLICY.blockConfidenceFloor,
+      0,
+      100,
+    ),
+    requireReproducedFailureForBlock:
+      policy?.requireReproducedFailureForBlock === true,
+  };
+}
+
+function evaluateReleasePolicy({
+  input,
+  verdict,
+  confidence,
+  policy,
+}: {
+  input: TriageInput;
+  verdict: TriageVerdict;
+  confidence: number;
+  policy: ReleasePolicy;
+}): { releaseDecision: TriageResult["releaseDecision"]; policyEvaluation: PolicyEvaluation } {
+  const base = {
+    ...policy,
+    decisionReason: "",
+  };
+
+  if (verdict === "healthy") {
+    return {
+      releaseDecision: "ALLOW",
+      policyEvaluation: {
+        ...base,
+        decisionReason: "A successful workflow always clears the release gate.",
+      },
+    };
+  }
+
+  if (verdict !== "code-regression") {
+    return {
+      releaseDecision: "HOLD",
+      policyEvaluation: {
+        ...base,
+        decisionReason: "Only a supported code-regression diagnosis can escalate to a block.",
+      },
+    };
+  }
+
+  if (!input.protectedBranch) {
+    return {
+      releaseDecision: "HOLD",
+      policyEvaluation: {
+        ...base,
+        decisionReason: "The selected branch is not protected, so regression evidence remains on hold.",
+      },
+    };
+  }
+
+  if (policy.protectedBranchRegression !== "BLOCK") {
+    return {
+      releaseDecision: "HOLD",
+      policyEvaluation: {
+        ...base,
+        decisionReason: "This policy holds protected-branch regressions instead of blocking them.",
+      },
+    };
+  }
+
+  if (confidence < policy.blockConfidenceFloor) {
+    return {
+      releaseDecision: "HOLD",
+      policyEvaluation: {
+        ...base,
+        decisionReason: `Confidence ${confidence}% is below the ${policy.blockConfidenceFloor}% block threshold.`,
+      },
+    };
+  }
+
+  if (policy.requireReproducedFailureForBlock && input.retryOutcome !== "failure") {
+    return {
+      releaseDecision: "HOLD",
+      policyEvaluation: {
+        ...base,
+        decisionReason: "This policy requires a reproduced failure before blocking a protected branch.",
+      },
+    };
+  }
+
+  return {
+    releaseDecision: "BLOCK",
+    policyEvaluation: {
+      ...base,
+      decisionReason: "Protected-branch regression evidence satisfies the configured release policy.",
+    },
+  };
+}
+
+export function analyzeRun(
+  input: TriageInput,
+  policyOverride?: Partial<ReleasePolicy>,
+): TriageResult {
+  const policy = normalizeReleasePolicy(policyOverride);
   const scorecard = {
     "code-regression": 0,
     "flaky-test": 0,
@@ -90,6 +212,12 @@ export function analyzeRun(input: TriageInput): TriageResult {
         },
       ],
       scorecard,
+      policyEvaluation: evaluateReleasePolicy({
+        input,
+        verdict: "healthy",
+        confidence: 99,
+        policy,
+      }).policyEvaluation,
     };
   }
 
@@ -113,6 +241,12 @@ export function analyzeRun(input: TriageInput): TriageResult {
         },
       ],
       scorecard,
+      policyEvaluation: evaluateReleasePolicy({
+        input,
+        verdict: "inconclusive",
+        confidence: 62,
+        policy,
+      }).policyEvaluation,
     };
   }
 
@@ -203,6 +337,12 @@ export function analyzeRun(input: TriageInput): TriageResult {
         "The failure has no corroborating retry, history, infrastructure, dependency, or code-change signal.",
       evidence: [],
       scorecard,
+      policyEvaluation: evaluateReleasePolicy({
+        input,
+        verdict: "inconclusive",
+        confidence: 61,
+        policy,
+      }).policyEvaluation,
     };
   }
 
@@ -214,8 +354,12 @@ export function analyzeRun(input: TriageInput): TriageResult {
     : verdict === "flaky-test"
       ? "medium"
       : "high";
-  const releaseDecision =
-    verdict === "code-regression" && input.protectedBranch ? "BLOCK" : "HOLD";
+  const { releaseDecision, policyEvaluation } = evaluateReleasePolicy({
+    input,
+    verdict,
+    confidence,
+    policy,
+  });
   const decisionPhrase = releaseDecision === "BLOCK" ? "blocked" : "on hold";
 
   return {
@@ -229,5 +373,6 @@ export function analyzeRun(input: TriageInput): TriageResult {
     explanation: `${evidence[0]?.detail ?? "The workflow failed."} The rule engine keeps the release ${decisionPhrase} until the signal is resolved.`,
     evidence: evidence.sort((a, b) => b.weight - a.weight),
     scorecard,
+    policyEvaluation,
   };
 }

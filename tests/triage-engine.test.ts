@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { analyzeRun, type TriageInput } from "../lib/triage-engine.ts";
+import {
+  analyzeRun,
+  type ReleasePolicy,
+  type TriageInput,
+} from "../lib/triage-engine.ts";
 
 const base: TriageInput = {
   runId: 1842,
@@ -75,4 +79,53 @@ test("unexplained failures remain inconclusive instead of guessing", () => {
   });
   assert.equal(result.verdict, "inconclusive");
   assert.equal(result.releaseDecision, "HOLD");
+});
+
+test("policy thresholds can hold a supported regression without changing diagnosis evidence", () => {
+  const strictPolicy: ReleasePolicy = {
+    protectedBranchRegression: "BLOCK",
+    blockConfidenceFloor: 95,
+    requireReproducedFailureForBlock: false,
+  };
+
+  const defaultResult = analyzeRun(base);
+  const strictResult = analyzeRun(base, strictPolicy);
+
+  assert.equal(defaultResult.releaseDecision, "BLOCK");
+  assert.equal(strictResult.verdict, "code-regression");
+  assert.equal(strictResult.releaseDecision, "HOLD");
+  assert.deepEqual(strictResult.scorecard, defaultResult.scorecard);
+  assert.match(strictResult.policyEvaluation.decisionReason, /below the 95% block threshold/);
+});
+
+test("a reproduced-failure policy keeps unverified regression signals on hold", () => {
+  const result = analyzeRun(
+    {
+      ...base,
+      retryOutcome: "not-run",
+    },
+    {
+      protectedBranchRegression: "BLOCK",
+      blockConfidenceFloor: 0,
+      requireReproducedFailureForBlock: true,
+    },
+  );
+
+  assert.equal(result.verdict, "code-regression");
+  assert.equal(result.releaseDecision, "HOLD");
+  assert.match(result.policyEvaluation.decisionReason, /requires a reproduced failure/);
+});
+
+test("a hold policy never changes the diagnosis or scorecard", () => {
+  const defaultResult = analyzeRun(base);
+  const result = analyzeRun(base, {
+    protectedBranchRegression: "HOLD",
+    blockConfidenceFloor: 0,
+    requireReproducedFailureForBlock: false,
+  });
+
+  assert.equal(result.verdict, "code-regression");
+  assert.equal(result.releaseDecision, "HOLD");
+  assert.deepEqual(result.scorecard, defaultResult.scorecard);
+  assert.match(result.policyEvaluation.decisionReason, /holds protected-branch regressions/);
 });

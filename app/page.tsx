@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -41,6 +42,8 @@ import {
 } from "@/components/ui/table";
 import {
   analyzeRun,
+  DEFAULT_RELEASE_POLICY,
+  type ReleasePolicy,
   type TriageInput,
   type TriageResult,
 } from "@/lib/triage-engine";
@@ -213,6 +216,9 @@ export default function Home() {
   const [analysis, setAnalysis] = useState<TriageResult>(() =>
     analyzeRun(demoRuns[0].signals),
   );
+  const [releasePolicy, setReleasePolicy] = useState<ReleasePolicy>(
+    DEFAULT_RELEASE_POLICY,
+  );
   const [analysisState, setAnalysisState] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
@@ -237,6 +243,10 @@ export default function Home() {
     [runs, selectedId],
   );
   const SelectedStatusIcon = statusIcon[selectedRun.status];
+  const policySimulation = useMemo(
+    () => analyzeRun(selectedRun.signals, releasePolicy),
+    [releasePolicy, selectedRun.signals],
+  );
   const demoMetrics = windowMetrics[windowSize as keyof typeof windowMetrics];
   const activePulse =
     dataMode === "github" && snapshot?.pulse.length
@@ -445,6 +455,10 @@ export default function Home() {
             <span className={`nav-count ${failedRunCount ? "is-alert" : ""}`}>
               {failedRunCount}
             </span>
+          </a>
+          <a className="nav-item" href="#policy">
+            <ShieldCheck aria-hidden="true" />
+            Policy lab
           </a>
           <a className="nav-item" href="#rules">
             <ShieldCheck aria-hidden="true" />
@@ -801,6 +815,92 @@ export default function Home() {
             </article>
           </section>
 
+          <section className="policy-panel" id="policy" aria-labelledby="policy-title">
+            <div className="policy-copy">
+              <span className="eyebrow">Policy simulator</span>
+              <h2 id="policy-title">Tune the release gate, not the evidence.</h2>
+              <p>
+                Apply a local policy to the selected run. The diagnosis and scorecard stay fixed;
+                only the final release action can change.
+              </p>
+              <span className="policy-local-note">Browser-only simulation · no release state changes</span>
+            </div>
+
+            <div className="policy-controls" aria-label="Release policy controls">
+              <label>
+                <span>Protected-branch regression</span>
+                <Select
+                  value={releasePolicy.protectedBranchRegression}
+                  onValueChange={(value) =>
+                    setReleasePolicy((current) => ({
+                      ...current,
+                      protectedBranchRegression: value as ReleasePolicy["protectedBranchRegression"],
+                    }))
+                  }
+                >
+                  <SelectTrigger aria-label="Protected branch regression action">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="BLOCK">Block release</SelectItem>
+                    <SelectItem value="HOLD">Hold for review</SelectItem>
+                  </SelectContent>
+                </Select>
+              </label>
+              <label>
+                <span>Block confidence floor</span>
+                <Select
+                  value={String(releasePolicy.blockConfidenceFloor)}
+                  onValueChange={(value) =>
+                    setReleasePolicy((current) => ({
+                      ...current,
+                      blockConfidenceFloor: Number(value),
+                    }))
+                  }
+                >
+                  <SelectTrigger aria-label="Block confidence floor">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Rule match</SelectItem>
+                    <SelectItem value="70">70% confidence</SelectItem>
+                    <SelectItem value="85">85% confidence</SelectItem>
+                    <SelectItem value="95">95% confidence</SelectItem>
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="policy-switch-row">
+                <span>
+                  <strong>Require reproduced failure</strong>
+                  <small>Do not block until a clean retry also fails.</small>
+                </span>
+                <Switch
+                  checked={releasePolicy.requireReproducedFailureForBlock}
+                  onCheckedChange={(checked) =>
+                    setReleasePolicy((current) => ({
+                      ...current,
+                      requireReproducedFailureForBlock: checked,
+                    }))
+                  }
+                  aria-label="Require reproduced failure before blocking"
+                />
+              </label>
+            </div>
+
+            <article
+              className="policy-outcome"
+              data-decision={policySimulation.releaseDecision.toLowerCase()}
+              aria-live="polite"
+            >
+              <span>Simulated action for run #{selectedRun.runNumber ?? selectedRun.id}</span>
+              <strong>{policySimulation.releaseDecision}</strong>
+              <p>{policySimulation.policyEvaluation.decisionReason}</p>
+              <small>
+                Diagnosis remains <b>{policySimulation.label}</b> · {policySimulation.confidence}% confidence
+              </small>
+            </article>
+          </section>
+
           <section className="runs-panel" id="runs" aria-labelledby="runs-title">
             <div className="panel-heading runs-heading">
               <div>
@@ -912,7 +1012,7 @@ export default function Home() {
                 <i>verdict</i> {analysis.verdict}
                 {"\n"}<i>confidence</i> {analysis.confidence}
                 {"\n"}<i>release</i> {analysis.releaseDecision}
-                {"\n"}<i>engine</i> deterministic/v1
+                {"\n"}<i>engine</i> deterministic/v1.1
               </code>
             </div>
           </section>

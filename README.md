@@ -17,8 +17,9 @@ The public experience reads real GitHub Actions history for public repositories 
 
 1. [Open the live product](https://runsignal-caleb.mheaeduardo.chatgpt.site) and inspect the preloaded failed run.
 2. Select **Analyze selected run** to see the evidence, confidence, recommended action, and release policy produced by the server-backed deterministic engine.
-3. Enter a public `owner/repository` with GitHub Actions to replace the representative data with live workflow evidence.
-4. Trace the implementation from [`GET`/`POST /api/github`](app/api/github/route.ts) through [normalization](lib/github-actions.ts) into the [decision engine](lib/triage-engine.ts).
+3. Open **Policy lab** to adjust the protected-branch action, confidence floor, or retry requirement. The simulator changes only the release gate; it never mutates the diagnosis or evidence scorecard.
+4. Enter a public `owner/repository` with GitHub Actions to replace the representative data with live workflow evidence.
+5. Trace the implementation from [`GET`/`POST /api/github`](app/api/github/route.ts) through [normalization](lib/github-actions.ts) into the [decision engine](lib/triage-engine.ts).
 
 ## Engineering proof
 
@@ -26,6 +27,7 @@ The public experience reads real GitHub Actions history for public repositories 
 | --- | --- |
 | Real public GitHub Actions ingestion | Workflow, job, commit, retry, queue, and branch metadata normalized in [`lib/github-actions.ts`](lib/github-actions.ts) |
 | Explainable release decisions | Pure deterministic scoring and `ALLOW`, `HOLD`, or `BLOCK` policy in [`lib/triage-engine.ts`](lib/triage-engine.ts) |
+| Policy simulation without hidden side effects | Typed policy evaluation keeps diagnosis and scorecards stable while a local policy layer previews the release action |
 | Defensive provider boundary | Repository and run validation, fixed GitHub API origin, rate-limit handling, and fallback behavior in [`app/api/github/route.ts`](app/api/github/route.ts) |
 | Regression protection | Contract coverage for GitHub normalization and incident classification in [`tests/`](tests) |
 | Repeatable delivery | Automated test, lint, and production-build checks in [Reliability CI](.github/workflows/reliability-ci.yml) |
@@ -51,6 +53,7 @@ The engine stays deterministic. AI may eventually summarize a result, but it can
 - Server-side `GET` and `POST /api/github` endpoints with bounded repository and run validation.
 - Explicit GitHub API rate-limit, missing-repository, empty-history, and local-fallback states.
 - Original `POST /api/analyze` contract remains available for normalized webhook-shaped signals.
+- Interactive Policy lab demonstrates how typed release controls change only the final action, never the incident diagnosis or evidence scorecard.
 - Pure triage engine shared by the interface and API.
 - Graceful browser fallback if the analysis endpoint is unavailable.
 - WebMCP action for selecting and analyzing a representative workflow run.
@@ -153,6 +156,8 @@ Content-Type: application/json
 ```
 
 The response includes the verdict, severity, confidence, release decision, recommended action, ordered evidence, and complete scorecard.
+
+Optionally include a `releasePolicy` object with `protectedBranchRegression`, `blockConfidenceFloor`, and `requireReproducedFailureForBlock` to evaluate a policy override. The API returns its decision reason alongside the unchanged diagnosis and scorecard.
 
 ## Ownership
 
