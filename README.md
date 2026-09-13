@@ -3,13 +3,33 @@
 [![Reliability CI](https://github.com/calebponce/RunSignal/actions/workflows/reliability-ci.yml/badge.svg)](https://github.com/calebponce/RunSignal/actions/workflows/reliability-ci.yml)
 [![Live demo](https://img.shields.io/badge/live-demo-4fd1ff)](https://runsignal-caleb.mheaeduardo.chatgpt.site)
 
-An evidence-first CI reliability console that turns workflow history into explainable release decisions.
+**An evidence-first CI reliability console that turns workflow history into explainable release decisions.**
+
+[![RunSignal dashboard showing delivery health, an active CI incident, deterministic diagnosis, and a release decision](docs/images/runsignal-dashboard.png)](https://runsignal-caleb.mheaeduardo.chatgpt.site)
+
+[Live demo](https://runsignal-caleb.mheaeduardo.chatgpt.site) · [Decision engine](lib/triage-engine.ts) · [GitHub adapter](lib/github-actions.ts) · [API route](app/api/github/route.ts) · [Tests](tests) · [Architecture decision](docs/decisions/001-public-github-ingestion.md)
 
 RunSignal answers the question behind every red build: **is this a code regression, a flaky test, runner pressure, or an external dependency—and should the release continue?** It normalizes webhook-shaped signals, scores competing causes with deterministic rules, and returns an inspectable `ALLOW`, `HOLD`, or `BLOCK` decision.
 
-> Portfolio status: solo full-stack project by Caleb Ponce. The public experience reads real GitHub Actions history for public repositories without OAuth or stored credentials, with representative data retained as a resilient fallback.
+The public experience reads real GitHub Actions history for public repositories without OAuth or stored credentials. A representative incident set remains available when GitHub has no workflow history or its anonymous API limit is exhausted.
 
-> **[Open the interactive demo](https://runsignal-caleb.mheaeduardo.chatgpt.site)** — enter any public `owner/repository`, load its latest workflow runs, and execute a server-backed analysis without an account or repository token.
+## Review it in 60 seconds
+
+1. [Open the live product](https://runsignal-caleb.mheaeduardo.chatgpt.site) and inspect the preloaded failed run.
+2. Select **Analyze selected run** to see the evidence, confidence, recommended action, and release policy produced by the server-backed deterministic engine.
+3. Enter a public `owner/repository` with GitHub Actions to replace the representative data with live workflow evidence.
+4. Trace the implementation from [`GET`/`POST /api/github`](app/api/github/route.ts) through [normalization](lib/github-actions.ts) into the [decision engine](lib/triage-engine.ts).
+
+## Engineering proof
+
+| Capability | Inspectable evidence |
+| --- | --- |
+| Real public GitHub Actions ingestion | Workflow, job, commit, retry, queue, and branch metadata normalized in [`lib/github-actions.ts`](lib/github-actions.ts) |
+| Explainable release decisions | Pure deterministic scoring and `ALLOW`, `HOLD`, or `BLOCK` policy in [`lib/triage-engine.ts`](lib/triage-engine.ts) |
+| Defensive provider boundary | Repository and run validation, fixed GitHub API origin, rate-limit handling, and fallback behavior in [`app/api/github/route.ts`](app/api/github/route.ts) |
+| Regression protection | Contract coverage for GitHub normalization and incident classification in [`tests/`](tests) |
+| Repeatable delivery | Automated test, lint, and production-build checks in [Reliability CI](.github/workflows/reliability-ci.yml) |
+| Documented tradeoffs | Credential-free ingestion decision and known constraints in [ADR 001](docs/decisions/001-public-github-ingestion.md) |
 
 ## Why this project exists
 
@@ -44,6 +64,17 @@ The engine stays deterministic. AI may eventually summarize a result, but it can
 4. Enforce `ALLOW`, `HOLD`, or `BLOCK` independently of narrative generation.
 
 ## Architecture
+
+```mermaid
+flowchart LR
+    GH[Public GitHub Actions API] --> AD[Provider adapter and normalization]
+    AD --> API[Validated edge API]
+    API --> EN[Deterministic triage engine]
+    EN --> UI[React reliability console]
+    EN --> POLICY[ALLOW · HOLD · BLOCK]
+    FALLBACK[Representative incident set] --> UI
+    RATE[Rate-limit and provider diagnostics] --> UI
+```
 
 | Layer | Responsibility |
 | --- | --- |
