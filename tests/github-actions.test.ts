@@ -46,7 +46,7 @@ test("repository parser accepts names and GitHub URLs without widening the host"
   assert.equal(parseRepository("calebponce/RunSignal/actions"), null);
 });
 
-test("workflow normalization derives reproducibility, queue, and history signals", () => {
+test("workflow normalization does not infer retry results and excludes the selected run from history", () => {
   const runs = normalizeRuns(
     [
       baseRun,
@@ -62,10 +62,19 @@ test("workflow normalization derives reproducibility, queue, and history signals
   );
 
   assert.equal(runs[0].status, "failed");
-  assert.equal(runs[0].signals.retryOutcome, "failure");
-  assert.equal(runs[0].signals.historicalFailureRate, 0.5);
+  assert.equal(runs[0].runAttempt, 2);
+  assert.equal(runs[0].signals.retryOutcome, "unknown");
+  assert.equal(runs[0].signals.historicalFailureRate, 0);
+  assert.equal(runs[1].signals.retryOutcome, "not-run");
+  assert.equal(runs[1].signals.historicalFailureRate, 1);
   assert.equal(runs[0].signals.queueDelayMinutes, 2);
   assert.equal(runs[0].message, "Connect public workflow data");
+});
+
+test("a single failed workflow run supplies no historical failure or retry evidence", () => {
+  const [run] = normalizeRuns([baseRun], now);
+  assert.equal(run.signals.historicalFailureRate, 0);
+  assert.equal(run.signals.retryOutcome, "unknown");
 });
 
 test("repository snapshots expose reviewer-friendly reliability metrics", () => {

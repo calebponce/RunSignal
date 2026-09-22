@@ -234,6 +234,7 @@ export function normalizeRuns(rawRuns: GitHubWorkflowRun[], now = Date.now()) {
   return rawRuns.map<PublicWorkflowRun>((run) => {
     const peers = rawRuns.filter(
       (candidate) =>
+        candidate.id !== run.id &&
         candidate.workflow_id === run.workflow_id &&
         candidate.head_branch === run.head_branch &&
         candidate.conclusion,
@@ -265,14 +266,9 @@ export function normalizeRuns(rawRuns: GitHubWorkflowRun[], now = Date.now()) {
       signals: {
         runId: run.id,
         outcome,
-        retryOutcome:
-          runAttempt > 1
-            ? outcome === "success"
-              ? "success"
-              : outcome === "failure"
-                ? "failure"
-                : "cancelled"
-            : "not-run",
+        // run_attempt tells us a rerun happened, but this response contains
+        // only the current attempt's conclusion. Earlier outcomes are unknown.
+        retryOutcome: runAttempt > 1 ? "unknown" : "not-run",
         historicalFailureRate: peers.length ? failedPeers / peers.length : 0,
         queueDelayMinutes: minutesBetween(run.created_at, run.run_started_at),
         baselineQueueMinutes,

@@ -649,7 +649,7 @@ export default function Home() {
               </div>
               <div className="metric-foot">
                 {dataMode === "github"
-                  ? "Re-runs are inspected as flaky-test evidence"
+                  ? "Attempt count is visible; earlier outcomes are unknown"
                   : "2 suites need ownership"}
               </div>
             </article>
@@ -969,7 +969,7 @@ export default function Home() {
               <span className="eyebrow">Decision system</span>
               <h2 id="rules-title">Evidence before explanation.</h2>
               <p>
-                Public workflow, job, commit, queue, retry, and branch signals
+                Public workflow, job, commit, queue, and branch signals
                 enter a deterministic scoring engine. Optional AI can summarize
                 the result later; it cannot change a release decision.
               </p>
@@ -986,7 +986,7 @@ export default function Home() {
                 <span>01</span>
                 <div>
                   <strong>Normalize signals</strong>
-                  <p>Outcome, retry, queue, dependency, history, and changed paths.</p>
+                  <p>Outcome, queue, workflow history, and changed paths; retry outcome when verified.</p>
                 </div>
               </li>
               <li>

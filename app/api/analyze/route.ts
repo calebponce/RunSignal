@@ -7,7 +7,7 @@ export const runtime = "edge";
 const requestSchema = z.object({
   runId: z.number().int().positive(),
   outcome: z.enum(["success", "failure", "cancelled"]),
-  retryOutcome: z.enum(["success", "failure", "cancelled", "not-run"]),
+  retryOutcome: z.enum(["success", "failure", "cancelled", "not-run", "unknown"]),
   historicalFailureRate: z.number().min(0).max(1),
   queueDelayMinutes: z.number().min(0).max(240),
   baselineQueueMinutes: z.number().positive().max(240),

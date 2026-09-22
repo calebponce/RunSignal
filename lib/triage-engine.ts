@@ -11,7 +11,7 @@ export type TriageVerdict =
 export type TriageInput = {
   runId: number;
   outcome: RunOutcome;
-  retryOutcome: RunOutcome | "not-run";
+  retryOutcome: RunOutcome | "not-run" | "unknown";
   historicalFailureRate: number;
   queueDelayMinutes: number;
   baselineQueueMinutes: number;
@@ -54,7 +54,7 @@ export type TriageResult = {
 export const DEFAULT_RELEASE_POLICY: ReleasePolicy = {
   protectedBranchRegression: "BLOCK",
   blockConfidenceFloor: 0,
-  requireReproducedFailureForBlock: false,
+  requireReproducedFailureForBlock: true,
 };
 
 const labels: Record<TriageVerdict, string> = {
@@ -91,7 +91,8 @@ function normalizeReleasePolicy(policy: Partial<ReleasePolicy> | undefined): Rel
       100,
     ),
     requireReproducedFailureForBlock:
-      policy?.requireReproducedFailureForBlock === true,
+      policy?.requireReproducedFailureForBlock ??
+      DEFAULT_RELEASE_POLICY.requireReproducedFailureForBlock,
   };
 }
 
@@ -254,8 +255,8 @@ export function analyzeRun(
   if (input.retryOutcome === "failure") {
     scorecard["code-regression"] += 36;
     evidence.push({
-      label: "Failure reproduced",
-      detail: "The same failure remained after a clean retry.",
+      label: "Retry also failed",
+      detail: "A subsequent attempt also failed; whether it was the same failure is unverified.",
       supports: "code-regression",
       weight: 36,
     });
@@ -265,18 +266,19 @@ export function analyzeRun(
     scorecard["flaky-test"] += 48;
     evidence.push({
       label: "Retry recovered",
-      detail: "The failed check passed without a code change.",
+      detail: "A subsequent attempt passed.",
       supports: "flaky-test",
       weight: 48,
     });
   }
 
-  if (input.historicalFailureRate >= 0.2) {
+  // Workflow-level failure history alone cannot identify a flaky test.
+  if (input.retryOutcome === "success" && input.historicalFailureRate >= 0.2) {
     const weight = Math.round(clamp(input.historicalFailureRate * 80, 16, 38));
     scorecard["flaky-test"] += weight;
     evidence.push({
-      label: "Recurring test signature",
-      detail: `${Math.round(input.historicalFailureRate * 100)}% historical failure rate.`,
+      label: "Workflow failure history",
+      detail: `${Math.round(input.historicalFailureRate * 100)}% of comparable workflow runs failed.`,
       supports: "flaky-test",
       weight,
     });
@@ -313,7 +315,7 @@ export function analyzeRun(
     scorecard["code-regression"] += 32;
     evidence.push({
       label: "Application code changed",
-      detail: "The commit modified paths exercised by the failed suite.",
+      detail: "The commit modified application paths; a link to the failed check is unverified.",
       supports: "code-regression",
       weight: 32,
     });

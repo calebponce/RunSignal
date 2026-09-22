@@ -81,6 +81,28 @@ test("unexplained failures remain inconclusive instead of guessing", () => {
   assert.equal(result.releaseDecision, "HOLD");
 });
 
+test("workflow history alone cannot diagnose a flaky test", () => {
+  const result = analyzeRun({
+    ...base,
+    retryOutcome: "not-run",
+    historicalFailureRate: 0.8,
+    touchedApplicationCode: false,
+  });
+  assert.equal(result.verdict, "inconclusive");
+  assert.equal(result.releaseDecision, "HOLD");
+});
+
+test("application path changes alone cannot block by default", () => {
+  const result = analyzeRun({
+    ...base,
+    retryOutcome: "not-run",
+  });
+  assert.equal(result.verdict, "code-regression");
+  assert.equal(result.releaseDecision, "HOLD");
+  assert.match(result.policyEvaluation.decisionReason, /requires a reproduced failure/);
+  assert.match(result.evidence[0].detail, /unverified/);
+});
+
 test("policy thresholds can hold a supported regression without changing diagnosis evidence", () => {
   const strictPolicy: ReleasePolicy = {
     protectedBranchRegression: "BLOCK",

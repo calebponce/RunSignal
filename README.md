@@ -25,7 +25,7 @@ The public experience reads real GitHub Actions history for public repositories 
 
 | Capability | Inspectable evidence |
 | --- | --- |
-| Real public GitHub Actions ingestion | Workflow, job, commit, retry, queue, and branch metadata normalized in [`lib/github-actions.ts`](lib/github-actions.ts) |
+| Real public GitHub Actions ingestion | Workflow, job, commit, run-attempt count, queue, and branch metadata normalized in [`lib/github-actions.ts`](lib/github-actions.ts) |
 | Explainable release decisions | Pure deterministic scoring and `ALLOW`, `HOLD`, or `BLOCK` policy in [`lib/triage-engine.ts`](lib/triage-engine.ts) |
 | Policy simulation without hidden side effects | Typed policy evaluation keeps diagnosis and scorecards stable while a local policy layer previews the release action |
 | Defensive provider boundary | Repository and run validation, fixed GitHub API origin, rate-limit handling, and fallback behavior in [`app/api/github/route.ts`](app/api/github/route.ts) |
@@ -39,7 +39,7 @@ The public experience reads real GitHub Actions history for public repositories 
 Build dashboards usually report that a run failed. RunSignal focuses on the decision that follows:
 
 - Reproducible failures after application-code changes point toward a regression.
-- Successful retries plus historical instability point toward a flaky test.
+- A verified successful retry plus comparable workflow history can support a flaky-test hypothesis.
 - Abnormal runner queues point toward infrastructure pressure.
 - Provider health signals can isolate an external dependency incident.
 - Protected branches block only when the evidence supports that policy.
@@ -49,7 +49,7 @@ The engine stays deterministic. AI may eventually summarize a result, but it can
 ## Working product
 
 - Interactive reliability workspace with health metrics and run history.
-- Read-only GitHub integration for real public repository, workflow, job, commit, retry, queue, and branch-protection evidence.
+- Read-only GitHub integration for real public repository, workflow, job, commit, run-attempt count, queue, and branch-protection evidence.
 - Selectable runs covering success, regression, flaky-test, infrastructure, and cancellation states.
 - Server-side `GET` and `POST /api/github` endpoints with bounded repository and run validation.
 - Explicit GitHub API rate-limit, missing-repository, empty-history, and local-fallback states.
@@ -62,7 +62,7 @@ The engine stays deterministic. AI may eventually summarize a result, but it can
 
 ## Deterministic decision flow
 
-1. Normalize outcome, retry, historical failure rate, queue delay, dependency health, changed paths, and branch protection.
+1. Normalize outcome, available retry results, comparable workflow history, queue delay, dependency health, changed paths, and branch protection.
 2. Score the four competing incident causes.
 3. Select the strongest supported verdict and expose every contributing signal.
 4. Enforce `ALLOW`, `HOLD`, or `BLOCK` independently of narrative generation.
@@ -83,7 +83,7 @@ flowchart LR
 | Layer | Responsibility |
 | --- | --- |
 | React + Vinext | Interactive operations console and accessible state transitions |
-| GitHub REST adapter | Reads public workflow, job, commit, retry, queue, and branch metadata without a user token |
+| GitHub REST adapter | Reads public workflow, job, commit, run-attempt count, queue, and branch metadata without a user token |
 | Edge route | Validates webhook-shaped run signals and returns versioned analysis |
 | Deterministic engine | Evidence weighting, classification, confidence, severity, and release policy |
 | WebMCP | Exposes the same visible analyze-run journey as a structured browser action |
@@ -173,6 +173,7 @@ RunSignal was designed and implemented as a solo portfolio project by [Caleb Pon
 ## Current boundaries
 
 - GitHub ingestion is intentionally read-only and limited to public repositories.
+- The public GitHub run response exposes an attempt count but not earlier attempt outcomes. The adapter leaves retry outcome unknown and excludes the selected run from its historical workflow failure rate. A code-path change alone cannot block a release under the default policy.
 - Anonymous GitHub API rate limits apply; the interface reports the remaining request budget and preserves the demo fallback.
 - GitHub Actions does not provide third-party dependency health, so that signal remains neutral unless supplied through the normalized API contract.
 - The first release evaluates one normalized run at a time; it does not persist incidents.
