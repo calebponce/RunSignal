@@ -33,6 +33,7 @@ The public experience reads real GitHub Actions history for public repositories 
 | Repeatable delivery | Automated test, lint, and production-build checks in [Reliability CI](.github/workflows/reliability-ci.yml) |
 | Documented tradeoffs | Credential-free ingestion decision and known constraints in [ADR 001](docs/decisions/001-public-github-ingestion.md) |
 | Signed webhook boundary (shadow mode) | HMAC-SHA256 verification over raw request bytes, bounded payloads, delivery metadata validation, and [contract tests](tests/github-webhook.test.ts) |
+| Opt-in delivery ledger | [D1 adapter](lib/webhook-delivery-store.ts), generated [SQLite migration](drizzle/0000_steep_tomas.sql), and duplicate/conflict tests; **not enabled in the public demo** |
 
 ## Why this project exists
 
@@ -107,7 +108,9 @@ Open `http://localhost:5173`.
 
 The repository includes `POST /api/webhooks/github`. It accepts a GitHub `workflow_run.completed` delivery only when `RUNSIGNAL_GITHUB_WEBHOOK_SECRET` is configured in the running environment. It verifies `X-Hub-Signature-256` against the original request bytes, limits the payload to 1 MiB, validates the delivery ID and run shape, then returns a shadow-mode acknowledgement. Other signed event types are ignored. Missing configuration fails closed. The public demo remains a read-only GitHub browser and has no webhook secret configured.
 
-This preview does not persist deliveries, deduplicate redeliveries, analyze the run, or post GitHub Checks. Do not use it as an active release gate. The [signed intake decision](docs/decisions/002-signed-webhook-shadow-mode.md) explains the boundary and the remaining work.
+The public demo still runs in shadow mode: its [hosting configuration](.openai/hosting.json) has `d1: null` and no webhook secret. The repository now includes an opt-in D1 ledger. If a D1 `DB` binding, the generated [`webhook_deliveries` migration](drizzle/0000_steep_tomas.sql), and a webhook secret are explicitly configured, completed-run deliveries record only an ID, body digest, repository, run ID, and receipt time. An identical redelivery returns `duplicate`; a reused ID with different bytes returns `409`. A configured but unavailable store returns `503` instead of silently reverting to shadow mode. This does **not** analyze the run, enforce a release gate, post GitHub Checks, or provide installation-scoped authorization. No D1 binding or webhook secret was provisioned for the public site as part of this project.
+
+The local suite tests duplicate behavior with a D1-shaped in-memory adapter and executes the generated migration in SQLite. It has **not** been integration-tested against a provisioned D1 database. Before operational use, apply the migration to a configured D1 database, exercise GitHub redelivery against a test repository, define retention and out-of-order-event handling, and add authorization and background processing. See the [signed intake decision](docs/decisions/002-signed-webhook-shadow-mode.md).
 
 ## Verify
 
@@ -179,7 +182,7 @@ RunSignal was designed and implemented as a solo portfolio project by [Caleb Pon
 - The first release evaluates one normalized run at a time; it does not persist incidents.
 - Confidence is a transparent rule score, not a statistical probability.
 - Production adoption would add durable event storage, background processing, authenticated private-repository access, and organization-specific policy configuration.
-- The repository includes signed webhook intake in shadow mode; durable event storage, replay protection, background processing, and GitHub Checks remain future work.
+- Signed webhook intake stays in shadow mode on the public demo. An opt-in D1 ledger has local duplicate/conflict tests but is not provisioned, deployed, or validated against live redelivery. Retention, background processing, installation-scoped authorization, and GitHub Checks remain future work.
 
 ## License
 

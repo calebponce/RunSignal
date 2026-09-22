@@ -1,3 +1,5 @@
+import type { DeliveryStore } from "./webhook-delivery-store";
+
 const MAX_PAYLOAD_BYTES = 1024 * 1024;
 const SIGNATURE_PATTERN = /^sha256=([0-9a-f]{64})$/i;
 const DELIVERY_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -80,7 +82,11 @@ async function readBoundedBody(request: Request): Promise<Uint8Array | null> {
   return body;
 }
 
-export async function handleGitHubWebhook(request: Request, secret: string | undefined): Promise<Response> {
+export async function handleGitHubWebhook(
+  request: Request,
+  secret: string | undefined,
+  deliveryStore?: DeliveryStore,
+): Promise<Response> {
   if (!secret) {
     return Response.json({ error: "WEBHOOK_NOT_CONFIGURED" }, { status: 503 });
   }
@@ -119,6 +125,24 @@ export async function handleGitHubWebhook(request: Request, secret: string | und
   const run = completedRun(payload);
   if (!run) {
     return Response.json({ error: "INVALID_WORKFLOW_RUN" }, { status: 400 });
+  }
+
+  if (deliveryStore) {
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(body)));
+    const payloadSha256 = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    try {
+      const outcome = await deliveryStore.record({ deliveryId, payloadSha256, ...run });
+      if (outcome === "conflict") {
+        return Response.json({ error: "DELIVERY_ID_CONFLICT", deliveryId }, { status: 409 });
+      }
+      return Response.json(
+        { status: outcome === "new" ? "recorded" : "duplicate", mode: "ledger", deliveryId, ...run },
+        { status: outcome === "new" ? 202 : 200 },
+      );
+    } catch {
+      // A configured but unavailable ledger must never silently revert to shadow mode.
+      return Response.json({ error: "DELIVERY_STORE_UNAVAILABLE" }, { status: 503 });
+    }
   }
 
   return Response.json(
