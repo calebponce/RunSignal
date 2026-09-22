@@ -32,6 +32,7 @@ The public experience reads real GitHub Actions history for public repositories 
 | Regression protection | Contract coverage for GitHub normalization and incident classification in [`tests/`](tests) |
 | Repeatable delivery | Automated test, lint, and production-build checks in [Reliability CI](.github/workflows/reliability-ci.yml) |
 | Documented tradeoffs | Credential-free ingestion decision and known constraints in [ADR 001](docs/decisions/001-public-github-ingestion.md) |
+| Signed webhook boundary (shadow mode) | HMAC-SHA256 verification over raw request bytes, bounded payloads, delivery metadata validation, and [contract tests](tests/github-webhook.test.ts) |
 
 ## Why this project exists
 
@@ -102,6 +103,12 @@ npm run dev
 
 Open `http://localhost:5173`.
 
+### Signed webhook intake preview
+
+The repository includes `POST /api/webhooks/github`. It accepts a GitHub `workflow_run.completed` delivery only when `RUNSIGNAL_GITHUB_WEBHOOK_SECRET` is configured in the running environment. It verifies `X-Hub-Signature-256` against the original request bytes, limits the payload to 1 MiB, validates the delivery ID and run shape, then returns a shadow-mode acknowledgement. Other signed event types are ignored. Missing configuration fails closed. The public demo remains a read-only GitHub browser and has no webhook secret configured.
+
+This preview does not persist deliveries, deduplicate redeliveries, analyze the run, or post GitHub Checks. Do not use it as an active release gate. The [signed intake decision](docs/decisions/002-signed-webhook-shadow-mode.md) explains the boundary and the remaining work.
+
 ## Verify
 
 ```bash
@@ -170,7 +177,8 @@ RunSignal was designed and implemented as a solo portfolio project by [Caleb Pon
 - GitHub Actions does not provide third-party dependency health, so that signal remains neutral unless supplied through the normalized API contract.
 - The first release evaluates one normalized run at a time; it does not persist incidents.
 - Confidence is a transparent rule score, not a statistical probability.
-- Production adoption would add signed webhook ingestion, durable event storage, background processing, authenticated private-repository access, and organization-specific policy configuration.
+- Production adoption would add durable event storage, background processing, authenticated private-repository access, and organization-specific policy configuration.
+- The repository includes signed webhook intake in shadow mode; durable event storage, replay protection, background processing, and GitHub Checks remain future work.
 
 ## License
 

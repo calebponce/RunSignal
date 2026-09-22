@@ -79,12 +79,13 @@ const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
 function normalizeReleasePolicy(policy: Partial<ReleasePolicy> | undefined): ReleasePolicy {
+  const requestedConfidenceFloor = policy?.blockConfidenceFloor;
   return {
     protectedBranchRegression:
       policy?.protectedBranchRegression === "HOLD" ? "HOLD" : "BLOCK",
     blockConfidenceFloor: clamp(
-      Number.isFinite(policy?.blockConfidenceFloor)
-        ? Math.round(policy.blockConfidenceFloor)
+      typeof requestedConfidenceFloor === "number" && Number.isFinite(requestedConfidenceFloor)
+        ? Math.round(requestedConfidenceFloor)
         : DEFAULT_RELEASE_POLICY.blockConfidenceFloor,
       0,
       100,
