@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmdirSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
@@ -182,5 +184,58 @@ test("the generated SQLite migration supports the D1 adapter and timestamps rows
     assert.notEqual(row?.received_at, "CURRENT_TIMESTAMP");
   } finally {
     database.close();
+  }
+});
+
+test("a delivery remains deduplicated after reopening the local SQLite database", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "runsignal-replay-"));
+  const databasePath = join(directory, "deliveries.sqlite");
+  const migration = readFileSync(new URL("../drizzle/0000_steep_tomas.sql", import.meta.url), "utf8");
+
+  function storeFor(database: DatabaseSync) {
+    const adapter = {
+      prepare(query: string) {
+        return {
+          bind(...values: (string | number)[]) {
+            return {
+              async run() {
+                const result = database.prepare(query).run(...values);
+                return { meta: { changes: Number(result.changes) } };
+              },
+              async first() {
+                return database.prepare(query).get(...values) ?? null;
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+    return new D1DeliveryStore(adapter);
+  }
+
+  try {
+    const initial = new DatabaseSync(databasePath);
+    try {
+      initial.exec(migration);
+      const first = await handleGitHubWebhook(signedRequest(payload), secret, storeFor(initial));
+      assert.equal(first.status, 202);
+      assert.equal(((await first.json()) as { status: string }).status, "recorded");
+    } finally {
+      initial.close();
+    }
+
+    const reopened = new DatabaseSync(databasePath);
+    try {
+      const duplicate = await handleGitHubWebhook(signedRequest(payload), secret, storeFor(reopened));
+      assert.equal(duplicate.status, 200);
+      assert.equal(((await duplicate.json()) as { status: string }).status, "duplicate");
+      const count = reopened.prepare("SELECT COUNT(*) AS count FROM webhook_deliveries").get() as { count: number };
+      assert.equal(count.count, 1);
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    unlinkSync(databasePath);
+    rmdirSync(directory);
   }
 });

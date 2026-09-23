@@ -7,7 +7,7 @@
 
 [![RunSignal dashboard showing delivery health, an active CI incident, deterministic diagnosis, and a release decision](docs/images/runsignal-dashboard.png)](https://runsignal-caleb.mheaeduardo.chatgpt.site)
 
-[Live demo](https://runsignal-caleb.mheaeduardo.chatgpt.site) · [Decision engine](lib/triage-engine.ts) · [GitHub adapter](lib/github-actions.ts) · [API route](app/api/github/route.ts) · [Tests](tests) · [Architecture decision](docs/decisions/001-public-github-ingestion.md)
+[Live demo](https://runsignal-caleb.mheaeduardo.chatgpt.site) · [Decision engine](lib/triage-engine.ts) · [GitHub adapter](lib/github-actions.ts) · [API route](app/api/github/route.ts) · [Tests](tests) · [Event-flow architecture](docs/architecture/event-flows.md)
 
 RunSignal answers the question behind every red build: **is this a code regression, a flaky test, runner pressure, or an external dependency—and should the release continue?** It normalizes webhook-shaped signals, scores competing causes with deterministic rules, and returns an inspectable `ALLOW`, `HOLD`, or `BLOCK` decision.
 
@@ -91,7 +91,7 @@ flowchart LR
 | Node test suite | Locks regression, flaky-test, infrastructure, dependency, success, and inconclusive contracts |
 | Cloudflare Workers runtime | Hosts the full-stack application without paid third-party services |
 
-The provider-boundary tradeoffs are documented in [ADR 001: Public GitHub ingestion without credentials](docs/decisions/001-public-github-ingestion.md).
+The provider-boundary tradeoffs are documented in [ADR 001: Public GitHub ingestion without credentials](docs/decisions/001-public-github-ingestion.md). The [event-flow architecture note](docs/architecture/event-flows.md) separates public polling, signed shadow intake, optional receipt storage, and release authority.
 
 ## Run locally
 
@@ -110,7 +110,7 @@ The repository includes `POST /api/webhooks/github`. It accepts a GitHub `workfl
 
 The public demo still runs in shadow mode: its [hosting configuration](.openai/hosting.json) has `d1: null` and no webhook secret. The repository now includes an opt-in D1 ledger. If a D1 `DB` binding, the generated [`webhook_deliveries` migration](drizzle/0000_steep_tomas.sql), and a webhook secret are explicitly configured, completed-run deliveries record only an ID, body digest, repository, run ID, and receipt time. An identical redelivery returns `duplicate`; a reused ID with different bytes returns `409`. A configured but unavailable store returns `503` instead of silently reverting to shadow mode. This does **not** analyze the run, enforce a release gate, post GitHub Checks, or provide installation-scoped authorization. No D1 binding or webhook secret was provisioned for the public site as part of this project.
 
-The local suite tests duplicate behavior with a D1-shaped in-memory adapter and executes the generated migration in SQLite. It has **not** been integration-tested against a provisioned D1 database. Before operational use, apply the migration to a configured D1 database, exercise GitHub redelivery against a test repository, define retention and out-of-order-event handling, and add authorization and background processing. See the [signed intake decision](docs/decisions/002-signed-webhook-shadow-mode.md).
+The local suite tests duplicate behavior with a D1-shaped in-memory adapter, executes the generated migration in SQLite, and checks duplicate replay after reopening a local SQLite file. It has **not** been integration-tested against a provisioned D1 database. Before operational use, apply the migration to a configured D1 database, exercise GitHub redelivery against a test repository, define retention and out-of-order-event handling, and add authorization and background processing. See the [signed intake decision](docs/decisions/002-signed-webhook-shadow-mode.md).
 
 ## Verify
 
